@@ -1,6 +1,7 @@
 %{
 #include <stdio.h>
 int vars[26];
+#define YY_MEMORIZATION
 %}
 
 Stmt    = - e:Expr EOL                  { printf("%d\n", e); }

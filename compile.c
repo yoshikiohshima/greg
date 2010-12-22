@@ -324,6 +324,15 @@ static void Rule_compile_c2(Node *node)
 
       fprintf(output, "\nYY_RULE(int) yy_%s(GREG *G)\n{", node->rule.name);
       if (!safe) save(0);
+      if (!safe) {
+          fprintf(output, "\n#ifdef YY_MEMORIZATION");
+          fprintf(output, "\n  if(memo(G, yypos0, %d)) {", node->rule.id);
+          fprintf(output, "\n    yyprintf((stderr, \"  fail memo %%s @ %%s\\n\", \"%s\", G->buf+G->pos));", node->rule.name);
+          fprintf(output, "\n    return 0;");
+          fprintf(output, "\n  }");
+          fprintf(output, "\n#endif\n");
+      }         
+
       if (node->rule.variables)
         fprintf(output, "  yyDo(G, yyPush, %d, 0);", countVariables(node->rule.variables));
       fprintf(output, "\n  yyprintf((stderr, \"%%s\\n\", \"%s\"));", node->rule.name);
@@ -336,6 +345,9 @@ static void Rule_compile_c2(Node *node)
         {
           label(ko);
           restore(0);
+          fprintf(output, "\n#ifdef YY_MEMORIZATION");
+          fprintf(output, "\n  set_memo(G, yypos0, %d);", node->rule.id);
+          fprintf(output, "\n#endif");
           fprintf(output, "\n  yyprintf((stderr, \"  fail %%s @ %%s\\n\", \"%s\", G->buf+G->pos));", node->rule.name);
           fprintf(output, "\n  return 0;");
         }
@@ -444,6 +456,7 @@ typedef struct _GREG {\n\
   YYSTYPE *vals;\n\
   int valslen;\n\
   YY_XTYPE data;\n\
+  char **memo;\n\
 } GREG;\n\
 \n\
 YY_LOCAL(int) yyrefill(GREG *G)\n\
@@ -454,6 +467,9 @@ YY_LOCAL(int) yyrefill(GREG *G)\n\
     {\n\
       G->buflen *= 2;\n\
       G->buf= YY_REALLOC(G->buf, G->buflen, G->data);\n\
+#ifdef YY_MEMORIZATION\n\
+      G->memo = YY_REALLOC(G->memo, G->buflen, NULL);\n\
+#endif\n\
     }\n\
   YY_INPUT((G->buf + G->pos), yyn, (G->buflen - G->pos));\n\
   if (!yyn) return 0;\n\
@@ -563,6 +579,15 @@ YY_LOCAL(void) yyCommit(GREG *G)\n\
     {\n\
       memmove(G->buf, G->buf + G->pos, G->limit);\n\
     }\n\
+#ifdef YY_MEMORIZATION\n\
+  {\n\
+    int i;\n\
+    for (i = 0; i < G->buflen; i++) {\n\
+     if (G->memo[i]) memset(G->memo[i], 0, YYRULECOUNT);\n\
+    }\n\
+  }\n\
+#endif\n\
+\n\
   G->offset += G->pos;\n\
   G->begin -= G->pos;\n\
   G->end -= G->pos;\n\
@@ -619,6 +644,10 @@ YY_PARSE(int) YY_NAME(parse_from)(GREG *G, yyrule yystart)\n\
   G->begin= G->end= G->pos;\n\
   G->thunkpos= 0;\n\
   G->val= G->vals;\n\
+#ifdef YY_MEMORIZATION\n\
+  G->memo = malloc(sizeof(char**) * G->buflen);\n\
+  memset(G->memo, 0, sizeof(char**) * G->buflen);\n\
+#endif\n\
   yyok= yystart(G);\n\
   if (yyok) yyDone(G);\n\
   yyCommit(G);\n\
@@ -656,6 +685,32 @@ YY_PARSE(void) YY_NAME(parse_free)(GREG *G)\n\
 }\n\
 \n\
 #endif\n\
+";
+
+static char *memo_code= "\n\
+#ifdef YY_MEMORIZATION\n\
+int\n\
+memo(struct _GREG *G, int pos, int rule_id)\n\
+{\n\
+  return ((G->memo != NULL) && (G->memo[pos] != NULL) && G->memo[pos][rule_id-1]);\n\
+}\n\
+\n\
+void\n\
+set_memo(struct _GREG *G, int pos, int rule_id)\n\
+{\n\
+  if (G->memo == NULL) {\n\
+    return;\n\
+  }\n\
+\n\
+  if (G->memo[pos] == NULL) {\n\
+    G->memo[pos] = malloc(sizeof(char*) * YYRULECOUNT);\n\
+    memset(G->memo[pos], 0, sizeof(char*) * YYRULECOUNT);\n\
+  }\n\
+\n\
+  G->memo[pos][rule_id-1] = 1;\n\
+}\n\
+#endif\n\
+\n\
 ";
 
 void Rule_compile_c_header(void)
@@ -735,6 +790,7 @@ void Rule_compile_c(Node *node)
     consumesInput(n);
 
   fprintf(output, "%s", preamble);
+  fprintf(output, "%s", memo_code);
   for (n= node;  n;  n= n->rule.next)
     fprintf(output, "YY_RULE(int) yy_%s(GREG *G); /* %d */\n", n->rule.name, n->rule.id);
   fprintf(output, "\n");

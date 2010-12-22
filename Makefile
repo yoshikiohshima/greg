@@ -1,5 +1,6 @@
 CFLAGS = -g -Wall $(OFLAGS) $(XFLAGS)
 OFLAGS = -O3 -DNDEBUG
+CC = gcc
 #OFLAGS = -pg
 
 OBJS = tree.o compile.o
