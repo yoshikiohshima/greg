@@ -17,17 +17,18 @@ parser can spend exponentially long time to try
 the same rule application at the same input
 location.  The typical solution for this problem
 is to assume that a grammar rule always returns
-the same result at the same location and remember
-the value, effectively in the (location, rule_id)
-2D table.
+the same result (or fail) at the same location and
+remember the value (or failure), effectively in
+the 2D table of (location, rule_id) -> value.
 
 An interesting quirk that Ian's leg has is that it
 defers the semantic action execution until the
 system "commits" a successfull parse.  (That is
 why putting printf() in a failed choice in a rule
 does not show any debug log, BTW.)  Because of
-this, a normal way of memorizing the results does
-not work.  So, instead, this fork only remembers
-the fact that the rule failed; next time it trys
-the same rule at the location, it short-cuts the
-work and fails.
+this, we cannot remember the successful result; as
+it is calculated later while attempting a lot of
+reduandant failures.  So, instead, this fork only
+remembers the fact that the rule failed; next time
+it trys the same rule at the location, it
+short-cuts the work and fails.
