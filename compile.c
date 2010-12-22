@@ -457,6 +457,7 @@ typedef struct _GREG {\n\
   int valslen;\n\
   YY_XTYPE data;\n\
   char **memo;\n\
+  int memolen;\n\
 } GREG;\n\
 \n\
 YY_LOCAL(int) yyrefill(GREG *G)\n\
@@ -468,7 +469,9 @@ YY_LOCAL(int) yyrefill(GREG *G)\n\
       G->buflen *= 2;\n\
       G->buf= YY_REALLOC(G->buf, G->buflen, G->data);\n\
 #ifdef YY_MEMORIZATION\n\
-      G->memo = YY_REALLOC(G->memo, G->buflen, NULL);\n\
+      G->memo = YY_REALLOC(G->memo, sizeof(char*) * G->buflen, NULL);\n\
+      memset(G->memo+G->memolen, 0, sizeof(char*) * (G->buflen - G->memolen));\n\
+      G->memolen = G->buflen;\n\
 #endif\n\
     }\n\
   YY_INPUT((G->buf + G->pos), yyn, (G->buflen - G->pos));\n\
@@ -582,7 +585,7 @@ YY_LOCAL(void) yyCommit(GREG *G)\n\
 #ifdef YY_MEMORIZATION\n\
   {\n\
     int i;\n\
-    for (i = 0; i < G->buflen; i++) {\n\
+    for (i = 0; i < G->memolen; i++) {\n\
      if (G->memo[i]) memset(G->memo[i], 0, YYRULECOUNT);\n\
     }\n\
   }\n\
@@ -639,15 +642,16 @@ YY_PARSE(int) YY_NAME(parse_from)(GREG *G, yyrule yystart)\n\
       G->valslen= YY_STACK_SIZE;\n\
       G->vals= YY_ALLOC(sizeof(YYSTYPE) * G->valslen, G->data);\n\
       G->begin= G->end= G->pos= G->limit= G->thunkpos= 0;\n\
+#ifdef YY_MEMORIZATION\n\
+      G->memo = malloc(sizeof(char**) * G->buflen);\n\
+      memset(G->memo, 0, sizeof(char**) * G->buflen);\n\
+      G->memolen = G->buflen;\n\
+#endif\n\
     }\n\
   G->pos = 0;\n\
   G->begin= G->end= G->pos;\n\
   G->thunkpos= 0;\n\
   G->val= G->vals;\n\
-#ifdef YY_MEMORIZATION\n\
-  G->memo = malloc(sizeof(char**) * G->buflen);\n\
-  memset(G->memo, 0, sizeof(char**) * G->buflen);\n\
-#endif\n\
   yyok= yystart(G);\n\
   if (yyok) yyDone(G);\n\
   yyCommit(G);\n\
