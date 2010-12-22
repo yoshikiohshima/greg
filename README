@@ -10,7 +10,7 @@ compiler written in ooc.
 peg/leg is copyright (c) 2007 by Ian Piumarta
 released under an MIT license. as is greg.
 
-This fork of greg supports the memorization of
+This fork of greg supports the memoization of
 failed rule application attempts.  For a language
 with more elaborated syntax and operators, a PEG
 parser can spend exponentially long time to try
