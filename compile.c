@@ -325,7 +325,7 @@ static void Rule_compile_c2(Node *node)
       fprintf(output, "\nYY_RULE(int) yy_%s(GREG *G)\n{", node->rule.name);
       if (!safe) save(0);
       if (!safe) {
-          fprintf(output, "\n#ifdef YY_MEMORIZATION");
+          fprintf(output, "\n#ifdef YY_MEMOIZATION");
           fprintf(output, "\n  if(memo(G, yypos0, %d)) {", node->rule.id);
           fprintf(output, "\n    yyprintf((stderr, \"  fail memo %%s @ %%s\\n\", \"%s\", G->buf+G->pos));", node->rule.name);
           fprintf(output, "\n    return 0;");
@@ -345,7 +345,7 @@ static void Rule_compile_c2(Node *node)
         {
           label(ko);
           restore(0);
-          fprintf(output, "\n#ifdef YY_MEMORIZATION");
+          fprintf(output, "\n#ifdef YY_MEMOIZATION");
           fprintf(output, "\n  set_memo(G, yypos0, %d);", node->rule.id);
           fprintf(output, "\n#endif");
           fprintf(output, "\n  yyprintf((stderr, \"  fail %%s @ %%s\\n\", \"%s\", G->buf+G->pos));", node->rule.name);
@@ -468,7 +468,7 @@ YY_LOCAL(int) yyrefill(GREG *G)\n\
     {\n\
       G->buflen *= 2;\n\
       G->buf= YY_REALLOC(G->buf, G->buflen, G->data);\n\
-#ifdef YY_MEMORIZATION\n\
+#ifdef YY_MEMOIZATION\n\
       G->memo = YY_REALLOC(G->memo, sizeof(char*) * G->buflen, NULL);\n\
       memset(G->memo+G->memolen, 0, sizeof(char*) * (G->buflen - G->memolen));\n\
       G->memolen = G->buflen;\n\
@@ -582,7 +582,7 @@ YY_LOCAL(void) yyCommit(GREG *G)\n\
     {\n\
       memmove(G->buf, G->buf + G->pos, G->limit);\n\
     }\n\
-#ifdef YY_MEMORIZATION\n\
+#ifdef YY_MEMOIZATION\n\
   {\n\
     int i;\n\
     for (i = 0; i < G->memolen; i++) {\n\
@@ -642,7 +642,7 @@ YY_PARSE(int) YY_NAME(parse_from)(GREG *G, yyrule yystart)\n\
       G->valslen= YY_STACK_SIZE;\n\
       G->vals= YY_ALLOC(sizeof(YYSTYPE) * G->valslen, G->data);\n\
       G->begin= G->end= G->pos= G->limit= G->thunkpos= 0;\n\
-#ifdef YY_MEMORIZATION\n\
+#ifdef YY_MEMOIZATION\n\
       G->memo = malloc(sizeof(char**) * G->buflen);\n\
       memset(G->memo, 0, sizeof(char**) * G->buflen);\n\
       G->memolen = G->buflen;\n\
@@ -692,7 +692,7 @@ YY_PARSE(void) YY_NAME(parse_free)(GREG *G)\n\
 ";
 
 static char *memo_code= "\n\
-#ifdef YY_MEMORIZATION\n\
+#ifdef YY_MEMOIZATION\n\
 int\n\
 memo(struct _GREG *G, int pos, int rule_id)\n\
 {\n\
