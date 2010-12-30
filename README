@@ -21,7 +21,7 @@ the same result (or fail) at the same location and
 remember the value (or failure), effectively in
 the 2D table of (location, rule_id) -> value.
 
-An interesting quirk that Ian's leg has is that it
+An interesting feature that Ian's leg has is that it
 defers the semantic action execution until the
 system "commits" a successfull parse.  (That is
 why putting printf() in a failed choice in a rule
