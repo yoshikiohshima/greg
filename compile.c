@@ -394,7 +394,7 @@ static char *preamble= "\
 #define YY_NAME(N) yy##N\n\
 #endif\n\
 #ifndef YY_INPUT\n\
-#define YY_INPUT(buf, result, max_size)                 \\\n\
+#define YY_INPUT(buf, result, max_size, D)              \\\n\
   {                                                     \\\n\
     int yyc= getchar();                                 \\\n\
     result= (EOF == yyc) ? 0 : (*(buf)= yyc, 1);        \\\n\
@@ -463,18 +463,17 @@ typedef struct _GREG {\n\
 YY_LOCAL(int) yyrefill(GREG *G)\n\
 {\n\
   int yyn;\n\
-  YY_XTYPE YY_XVAR = (YY_XTYPE) G->data;\n\
   while (G->buflen - G->pos < 512)\n\
     {\n\
       G->buflen *= 2;\n\
-      G->buf= YY_REALLOC(G->buf, G->buflen, G->data);\n\
+      G->buf= (char*)YY_REALLOC(G->buf, G->buflen, G->data);\n\
 #ifdef YY_MEMOIZATION\n\
-      G->memo = YY_REALLOC(G->memo, sizeof(char*) * G->buflen, NULL);\n\
+      G->memo = (char*)YY_REALLOC(G->memo, sizeof(char*) * G->buflen, NULL);\n\
       memset(G->memo+G->memolen, 0, sizeof(char*) * (G->buflen - G->memolen));\n\
       G->memolen = G->buflen;\n\
 #endif\n\
     }\n\
-  YY_INPUT((G->buf + G->pos), yyn, (G->buflen - G->pos));\n\
+  YY_INPUT((G->buf + G->pos), yyn, (G->buflen - G->pos), G->data);\n\
   if (!yyn) return 0;\n\
   G->limit += yyn;\n\
   return 1;\n\
@@ -500,7 +499,7 @@ YY_LOCAL(int) yymatchChar(GREG *G, int c)\n\
   return 0;\n\
 }\n\
 \n\
-YY_LOCAL(int) yymatchString(GREG *G, char *s)\n\
+YY_LOCAL(int) yymatchString(GREG *G, const char *s)\n\
 {\n\
   int yysav= G->pos;\n\
   while (*s)\n\
@@ -537,7 +536,7 @@ YY_LOCAL(void) yyDo(GREG *G, yyaction action, int begin, int end)\n\
   while (G->thunkpos >= G->thunkslen)\n\
     {\n\
       G->thunkslen *= 2;\n\
-      G->thunks= YY_REALLOC(G->thunks, sizeof(yythunk) * G->thunkslen, G->data);\n\
+      G->thunks= (yythunk*)YY_REALLOC(G->thunks, sizeof(yythunk) * G->thunkslen, G->data);\n\
     }\n\
   G->thunks[G->thunkpos].begin=  begin;\n\
   G->thunks[G->thunkpos].end=    end;\n\
@@ -555,7 +554,7 @@ YY_LOCAL(int) yyText(GREG *G, int begin, int end)\n\
       while (G->textlen < (yyleng - 1))\n\
         {\n\
           G->textlen *= 2;\n\
-          G->text= YY_REALLOC(G->text, G->textlen, G->data);\n\
+          G->text= (char*)YY_REALLOC(G->text, G->textlen, G->data);\n\
         }\n\
       memcpy(G->text, G->buf + begin, yyleng);\n\
     }\n\
@@ -634,13 +633,13 @@ YY_PARSE(int) YY_NAME(parse_from)(GREG *G, yyrule yystart)\n\
   if (!G->buflen)\n\
     {\n\
       G->buflen= YY_BUFFER_START_SIZE;\n\
-      G->buf= YY_ALLOC(G->buflen, G->data);\n\
+      G->buf= (char*)YY_ALLOC(G->buflen, G->data);\n\
       G->textlen= YY_BUFFER_START_SIZE;\n\
-      G->text= YY_ALLOC(G->textlen, G->data);\n\
+      G->text= (char*)YY_ALLOC(G->textlen, G->data);\n\
       G->thunkslen= YY_STACK_SIZE;\n\
-      G->thunks= YY_ALLOC(sizeof(yythunk) * G->thunkslen, G->data);\n\
+      G->thunks= (yythunk*)YY_ALLOC(sizeof(yythunk) * G->thunkslen, G->data);\n\
       G->valslen= YY_STACK_SIZE;\n\
-      G->vals= YY_ALLOC(sizeof(YYSTYPE) * G->valslen, G->data);\n\
+      G->vals= (YYSTYPE*)YY_ALLOC(sizeof(YYSTYPE) * G->valslen, G->data);\n\
       G->begin= G->end= G->pos= G->limit= G->thunkpos= 0;\n\
 #ifdef YY_MEMOIZATION\n\
       G->memo = malloc(sizeof(char**) * G->buflen);\n\
@@ -676,6 +675,17 @@ YY_PARSE(int) YY_NAME(parse)(GREG *G)\n\
   return YY_NAME(parse_from)(G, yy_%s);\n\
 }\n\
 \n\
+YY_PARSE(void) YY_NAME(init)(GREG *G)\n\
+{\n\
+    memset(G, 0, sizeof(GREG));\n\
+}\n\
+YY_PARSE(void) YY_NAME(deinit)(GREG *G)\n\
+{\n\
+    if (G->buf) YY_FREE(G->buf);\n\
+    if (G->text) YY_FREE(G->text);\n\
+    if (G->thunks) YY_FREE(G->thunks);\n\
+    if (G->vals) YY_FREE(G->vals);\n\
+}\n\
 YY_PARSE(GREG *) YY_NAME(parse_new)(YY_XTYPE data)\n\
 {\n\
   GREG *G = (GREG *)YY_CALLOC(1, sizeof(GREG), G->data);\n\
@@ -685,6 +695,7 @@ YY_PARSE(GREG *) YY_NAME(parse_new)(YY_XTYPE data)\n\
 \n\
 YY_PARSE(void) YY_NAME(parse_free)(GREG *G)\n\
 {\n\
+  YY_NAME(deinit)(G);\n\
   YY_FREE(G);\n\
 }\n\
 \n\

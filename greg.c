@@ -36,7 +36,7 @@ struct _GREG;
 
   void yyerror(struct _GREG *, char *message);
 
-# define YY_INPUT(buf, result, max)		\
+# define YY_INPUT(buf, result, max, D)		\
   {						\
     int c= getc(input);				\
     if ('\n' == c || '\r' == c) ++lineNumber;	\
@@ -74,7 +74,7 @@ struct _GREG;
 #define YY_NAME(N) yy##N
 #endif
 #ifndef YY_INPUT
-#define YY_INPUT(buf, result, max_size)                 \
+#define YY_INPUT(buf, result, max_size, D)              \
   {                                                     \
     int yyc= getchar();                                 \
     result= (EOF == yyc) ? 0 : (*(buf)= yyc, 1);        \
@@ -136,25 +136,17 @@ typedef struct _GREG {
   YYSTYPE *vals;
   int valslen;
   YY_XTYPE data;
-  char **memo;
-  int memolen;
 } GREG;
 
 YY_LOCAL(int) yyrefill(GREG *G)
 {
   int yyn;
-  YY_XTYPE YY_XVAR = (YY_XTYPE) G->data;
   while (G->buflen - G->pos < 512)
     {
       G->buflen *= 2;
-      G->buf= YY_REALLOC(G->buf, G->buflen, G->data);
-#ifdef YY_MEMOIZATION
-      G->memo = YY_REALLOC(G->memo, sizeof(char*) * G->buflen, NULL);
-      memset(G->memo+G->memolen, 0, sizeof(char*) * (G->buflen - G->memolen));
-      G->memolen = G->buflen;
-#endif
+      G->buf= (char*)YY_REALLOC(G->buf, G->buflen, G->data);
     }
-  YY_INPUT((G->buf + G->pos), yyn, (G->buflen - G->pos));
+  YY_INPUT((G->buf + G->pos), yyn, (G->buflen - G->pos), G->data);
   if (!yyn) return 0;
   G->limit += yyn;
   return 1;
@@ -180,7 +172,7 @@ YY_LOCAL(int) yymatchChar(GREG *G, int c)
   return 0;
 }
 
-YY_LOCAL(int) yymatchString(GREG *G, char *s)
+YY_LOCAL(int) yymatchString(GREG *G, const char *s)
 {
   int yysav= G->pos;
   while (*s)
@@ -217,7 +209,7 @@ YY_LOCAL(void) yyDo(GREG *G, yyaction action, int begin, int end)
   while (G->thunkpos >= G->thunkslen)
     {
       G->thunkslen *= 2;
-      G->thunks= YY_REALLOC(G->thunks, sizeof(yythunk) * G->thunkslen, G->data);
+      G->thunks= (yythunk*)YY_REALLOC(G->thunks, sizeof(yythunk) * G->thunkslen, G->data);
     }
   G->thunks[G->thunkpos].begin=  begin;
   G->thunks[G->thunkpos].end=    end;
@@ -235,7 +227,7 @@ YY_LOCAL(int) yyText(GREG *G, int begin, int end)
       while (G->textlen < (yyleng - 1))
         {
           G->textlen *= 2;
-          G->text= YY_REALLOC(G->text, G->textlen, G->data);
+          G->text= (char*)YY_REALLOC(G->text, G->textlen, G->data);
         }
       memcpy(G->text, G->buf + begin, yyleng);
     }
@@ -262,15 +254,6 @@ YY_LOCAL(void) yyCommit(GREG *G)
     {
       memmove(G->buf, G->buf + G->pos, G->limit);
     }
-#ifdef YY_MEMOIZATION
-  {
-    int i;
-    for (i = 0; i < G->memolen; i++) {
-     if (G->memo[i]) memset(G->memo[i], 0, YYRULECOUNT);
-    }
-  }
-#endif
-
   G->offset += G->pos;
   G->begin -= G->pos;
   G->end -= G->pos;
@@ -299,30 +282,6 @@ YY_LOCAL(void) yySet(GREG *G, char *text, int count, yythunk *thunk, YY_XTYPE YY
 #endif /* YY_PART */
 
 #define YYACCEPT        yyAccept(G, yythunkpos0)
-
-
-#ifdef YY_MEMOIZATION
-int
-memo(struct _GREG *G, int pos, int rule_id)
-{
-  return ((G->memo != NULL) && (G->memo[pos] != NULL) && G->memo[pos][rule_id-1]);
-}
-
-void
-set_memo(struct _GREG *G, int pos, int rule_id)
-{
-  if (G->memo == NULL) {
-    return;
-  }
-
-  if (G->memo[pos] == NULL) {
-    G->memo[pos] = malloc(sizeof(char*) * YYRULECOUNT);
-    memset(G->memo[pos], 0, sizeof(char*) * YYRULECOUNT);
-  }
-
-  G->memo[pos][rule_id-1] = 1;
-}
-#endif
 
 YY_RULE(int) yy_end_of_line(GREG *G); /* 37 */
 YY_RULE(int) yy_comment(GREG *G); /* 36 */
@@ -476,13 +435,6 @@ YY_ACTION(void) yy_1_declaration(GREG *G, char *yytext, int yyleng, yythunk *thu
 
 YY_RULE(int) yy_end_of_line(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 37)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "end_of_line", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "end_of_line"));
   {  int yypos2= G->pos, yythunkpos2= G->thunkpos;  if (!yymatchString(G, "\r\n")) goto l3;  goto l2;
   l3:;	  G->pos= yypos2; G->thunkpos= yythunkpos2;  if (!yymatchChar(G, '\n')) goto l4;  goto l2;
@@ -492,21 +444,11 @@ YY_RULE(int) yy_end_of_line(GREG *G)
   yyprintf((stderr, "  ok   %s @ %s\n", "end_of_line", G->buf+G->pos));
   return 1;
   l1:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 37);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "end_of_line", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_comment(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 36)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "comment", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "comment"));  if (!yymatchChar(G, '#')) goto l5;
   l6:;	
   {  int yypos7= G->pos, yythunkpos7= G->thunkpos;
@@ -518,21 +460,11 @@ YY_RULE(int) yy_comment(GREG *G)
   yyprintf((stderr, "  ok   %s @ %s\n", "comment", G->buf+G->pos));
   return 1;
   l5:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 36);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "comment", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_space(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 35)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "space", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "space"));
   {  int yypos10= G->pos, yythunkpos10= G->thunkpos;  if (!yymatchChar(G, ' ')) goto l11;  goto l10;
   l11:;	  G->pos= yypos10; G->thunkpos= yythunkpos10;  if (!yymatchChar(G, '\t')) goto l12;  goto l10;
@@ -542,21 +474,11 @@ YY_RULE(int) yy_space(GREG *G)
   yyprintf((stderr, "  ok   %s @ %s\n", "space", G->buf+G->pos));
   return 1;
   l9:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 35);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "space", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_braces(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 34)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "braces", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "braces"));
   {  int yypos14= G->pos, yythunkpos14= G->thunkpos;  if (!yymatchChar(G, '{')) goto l15;
   l16:;	
@@ -575,21 +497,11 @@ YY_RULE(int) yy_braces(GREG *G)
   yyprintf((stderr, "  ok   %s @ %s\n", "braces", G->buf+G->pos));
   return 1;
   l13:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 34);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "braces", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_range(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 33)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "range", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "range"));
   {  int yypos21= G->pos, yythunkpos21= G->thunkpos;  if (!yy_char(G)) { goto l22; }  if (!yymatchChar(G, '-')) goto l22;  if (!yy_char(G)) { goto l22; }  goto l21;
   l22:;	  G->pos= yypos21; G->thunkpos= yythunkpos21;  if (!yy_char(G)) { goto l20; }
@@ -598,21 +510,11 @@ YY_RULE(int) yy_range(GREG *G)
   yyprintf((stderr, "  ok   %s @ %s\n", "range", G->buf+G->pos));
   return 1;
   l20:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 33);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "range", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_char(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 32)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "char", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "char"));
   {  int yypos24= G->pos, yythunkpos24= G->thunkpos;  if (!yymatchChar(G, '\\')) goto l25;  if (!yymatchClass(G, (unsigned char *)"\000\000\000\000\204\000\000\000\000\000\000\070\146\100\124\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000")) goto l25;  goto l24;
   l25:;	  G->pos= yypos24; G->thunkpos= yythunkpos24;  if (!yymatchChar(G, '\\')) goto l26;  if (!yymatchClass(G, (unsigned char *)"\000\000\000\000\000\000\017\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000")) goto l26;  if (!yymatchClass(G, (unsigned char *)"\000\000\000\000\000\000\377\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000")) goto l26;  if (!yymatchClass(G, (unsigned char *)"\000\000\000\000\000\000\377\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000")) goto l26;  goto l24;
@@ -630,21 +532,11 @@ YY_RULE(int) yy_char(GREG *G)
   yyprintf((stderr, "  ok   %s @ %s\n", "char", G->buf+G->pos));
   return 1;
   l23:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 32);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "char", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_errblock(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 31)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "errblock", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "errblock"));  if (!yymatchString(G, "~{")) goto l31;  yyText(G, G->begin, G->end);  if (!(YY_BEGIN)) goto l31;
   l32:;	
   {  int yypos33= G->pos, yythunkpos33= G->thunkpos;  if (!yy_braces(G)) { goto l33; }  goto l32;
@@ -653,78 +545,38 @@ YY_RULE(int) yy_errblock(GREG *G)
   yyprintf((stderr, "  ok   %s @ %s\n", "errblock", G->buf+G->pos));
   return 1;
   l31:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 31);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "errblock", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_END(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 30)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "END", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "END"));  if (!yymatchChar(G, '>')) goto l34;  if (!yy__(G)) { goto l34; }
   yyprintf((stderr, "  ok   %s @ %s\n", "END", G->buf+G->pos));
   return 1;
   l34:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 30);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "END", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_BEGIN(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 29)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "BEGIN", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "BEGIN"));  if (!yymatchChar(G, '<')) goto l35;  if (!yy__(G)) { goto l35; }
   yyprintf((stderr, "  ok   %s @ %s\n", "BEGIN", G->buf+G->pos));
   return 1;
   l35:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 29);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "BEGIN", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_DOT(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 28)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "DOT", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "DOT"));  if (!yymatchChar(G, '.')) goto l36;  if (!yy__(G)) { goto l36; }
   yyprintf((stderr, "  ok   %s @ %s\n", "DOT", G->buf+G->pos));
   return 1;
   l36:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 28);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "DOT", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_class(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 27)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "class", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "class"));  if (!yymatchChar(G, '[')) goto l37;  yyText(G, G->begin, G->end);  if (!(YY_BEGIN)) goto l37;
   l38:;	
   {  int yypos39= G->pos, yythunkpos39= G->thunkpos;
@@ -736,21 +588,11 @@ YY_RULE(int) yy_class(GREG *G)
   yyprintf((stderr, "  ok   %s @ %s\n", "class", G->buf+G->pos));
   return 1;
   l37:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 27);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "class", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_literal(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 26)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "literal", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "literal"));
   {  int yypos42= G->pos, yythunkpos42= G->thunkpos;  if (!yymatchClass(G, (unsigned char *)"\000\000\000\000\200\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000")) goto l43;  yyText(G, G->begin, G->end);  if (!(YY_BEGIN)) goto l43;
   l44:;	
@@ -773,135 +615,65 @@ YY_RULE(int) yy_literal(GREG *G)
   yyprintf((stderr, "  ok   %s @ %s\n", "literal", G->buf+G->pos));
   return 1;
   l41:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 26);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "literal", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_CLOSE(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 25)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "CLOSE", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "CLOSE"));  if (!yymatchChar(G, ')')) goto l50;  if (!yy__(G)) { goto l50; }
   yyprintf((stderr, "  ok   %s @ %s\n", "CLOSE", G->buf+G->pos));
   return 1;
   l50:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 25);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "CLOSE", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_OPEN(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 24)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "OPEN", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "OPEN"));  if (!yymatchChar(G, '(')) goto l51;  if (!yy__(G)) { goto l51; }
   yyprintf((stderr, "  ok   %s @ %s\n", "OPEN", G->buf+G->pos));
   return 1;
   l51:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 24);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "OPEN", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_COLON(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 23)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "COLON", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "COLON"));  if (!yymatchChar(G, ':')) goto l52;  if (!yy__(G)) { goto l52; }
   yyprintf((stderr, "  ok   %s @ %s\n", "COLON", G->buf+G->pos));
   return 1;
   l52:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 23);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "COLON", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_PLUS(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 22)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "PLUS", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "PLUS"));  if (!yymatchChar(G, '+')) goto l53;  if (!yy__(G)) { goto l53; }
   yyprintf((stderr, "  ok   %s @ %s\n", "PLUS", G->buf+G->pos));
   return 1;
   l53:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 22);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "PLUS", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_STAR(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 21)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "STAR", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "STAR"));  if (!yymatchChar(G, '*')) goto l54;  if (!yy__(G)) { goto l54; }
   yyprintf((stderr, "  ok   %s @ %s\n", "STAR", G->buf+G->pos));
   return 1;
   l54:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 21);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "STAR", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_QUESTION(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 20)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "QUESTION", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "QUESTION"));  if (!yymatchChar(G, '?')) goto l55;  if (!yy__(G)) { goto l55; }
   yyprintf((stderr, "  ok   %s @ %s\n", "QUESTION", G->buf+G->pos));
   return 1;
   l55:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 20);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "QUESTION", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_primary(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 19)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "primary", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "primary"));
   {  int yypos57= G->pos, yythunkpos57= G->thunkpos;  if (!yy_identifier(G)) { goto l58; }  yyDo(G, yy_1_primary, G->begin, G->end);  if (!yy_COLON(G)) { goto l58; }  if (!yy_identifier(G)) { goto l58; }
   {  int yypos59= G->pos, yythunkpos59= G->thunkpos;  if (!yy_EQUAL(G)) { goto l59; }  goto l58;
@@ -927,40 +699,20 @@ YY_RULE(int) yy_primary(GREG *G)
   yyprintf((stderr, "  ok   %s @ %s\n", "primary", G->buf+G->pos));
   return 1;
   l56:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 19);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "primary", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_NOT(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 18)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "NOT", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "NOT"));  if (!yymatchChar(G, '!')) goto l70;  if (!yy__(G)) { goto l70; }
   yyprintf((stderr, "  ok   %s @ %s\n", "NOT", G->buf+G->pos));
   return 1;
   l70:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 18);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "NOT", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_suffix(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 17)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "suffix", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "suffix"));  if (!yy_primary(G)) { goto l71; }
   {  int yypos72= G->pos, yythunkpos72= G->thunkpos;
   {  int yypos74= G->pos, yythunkpos74= G->thunkpos;  if (!yy_QUESTION(G)) { goto l75; }  yyDo(G, yy_1_suffix, G->begin, G->end);  goto l74;
@@ -974,21 +726,11 @@ YY_RULE(int) yy_suffix(GREG *G)
   yyprintf((stderr, "  ok   %s @ %s\n", "suffix", G->buf+G->pos));
   return 1;
   l71:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 17);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "suffix", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_action(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 16)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "action", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "action"));  if (!yymatchChar(G, '{')) goto l77;  yyText(G, G->begin, G->end);  if (!(YY_BEGIN)) goto l77;
   l78:;	
   {  int yypos79= G->pos, yythunkpos79= G->thunkpos;  if (!yy_braces(G)) { goto l79; }  goto l78;
@@ -997,40 +739,20 @@ YY_RULE(int) yy_action(GREG *G)
   yyprintf((stderr, "  ok   %s @ %s\n", "action", G->buf+G->pos));
   return 1;
   l77:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 16);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "action", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_AND(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 15)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "AND", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "AND"));  if (!yymatchChar(G, '&')) goto l80;  if (!yy__(G)) { goto l80; }
   yyprintf((stderr, "  ok   %s @ %s\n", "AND", G->buf+G->pos));
   return 1;
   l80:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 15);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "AND", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_prefix(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 14)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "prefix", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "prefix"));
   {  int yypos82= G->pos, yythunkpos82= G->thunkpos;  if (!yy_AND(G)) { goto l83; }  if (!yy_action(G)) { goto l83; }  yyDo(G, yy_1_prefix, G->begin, G->end);  goto l82;
   l83:;	  G->pos= yypos82; G->thunkpos= yythunkpos82;  if (!yy_AND(G)) { goto l84; }  if (!yy_suffix(G)) { goto l84; }  yyDo(G, yy_2_prefix, G->begin, G->end);  goto l82;
@@ -1041,40 +763,20 @@ YY_RULE(int) yy_prefix(GREG *G)
   yyprintf((stderr, "  ok   %s @ %s\n", "prefix", G->buf+G->pos));
   return 1;
   l81:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 14);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "prefix", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_BAR(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 13)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "BAR", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "BAR"));  if (!yymatchChar(G, '|')) goto l86;  if (!yy__(G)) { goto l86; }
   yyprintf((stderr, "  ok   %s @ %s\n", "BAR", G->buf+G->pos));
   return 1;
   l86:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 13);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "BAR", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_sequence(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 12)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "sequence", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "sequence"));  if (!yy_prefix(G)) { goto l87; }
   l88:;	
   {  int yypos89= G->pos, yythunkpos89= G->thunkpos;  if (!yy_prefix(G)) { goto l89; }  yyDo(G, yy_1_sequence, G->begin, G->end);  goto l88;
@@ -1083,40 +785,20 @@ YY_RULE(int) yy_sequence(GREG *G)
   yyprintf((stderr, "  ok   %s @ %s\n", "sequence", G->buf+G->pos));
   return 1;
   l87:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 12);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "sequence", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_SEMICOLON(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 11)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "SEMICOLON", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "SEMICOLON"));  if (!yymatchChar(G, ';')) goto l90;  if (!yy__(G)) { goto l90; }
   yyprintf((stderr, "  ok   %s @ %s\n", "SEMICOLON", G->buf+G->pos));
   return 1;
   l90:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 11);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "SEMICOLON", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_expression(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 10)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "expression", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "expression"));  if (!yy_sequence(G)) { goto l91; }
   l92:;	
   {  int yypos93= G->pos, yythunkpos93= G->thunkpos;  if (!yy_BAR(G)) { goto l93; }  if (!yy_sequence(G)) { goto l93; }  yyDo(G, yy_1_expression, G->begin, G->end);  goto l92;
@@ -1125,40 +807,20 @@ YY_RULE(int) yy_expression(GREG *G)
   yyprintf((stderr, "  ok   %s @ %s\n", "expression", G->buf+G->pos));
   return 1;
   l91:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 10);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "expression", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_EQUAL(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 9)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "EQUAL", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "EQUAL"));  if (!yymatchChar(G, '=')) goto l94;  if (!yy__(G)) { goto l94; }
   yyprintf((stderr, "  ok   %s @ %s\n", "EQUAL", G->buf+G->pos));
   return 1;
   l94:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 9);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "EQUAL", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_identifier(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 8)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "identifier", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "identifier"));  yyText(G, G->begin, G->end);  if (!(YY_BEGIN)) goto l95;  if (!yymatchClass(G, (unsigned char *)"\000\000\000\000\000\040\000\000\376\377\377\207\376\377\377\007\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000")) goto l95;
   l96:;	
   {  int yypos97= G->pos, yythunkpos97= G->thunkpos;  if (!yymatchClass(G, (unsigned char *)"\000\000\000\000\000\040\377\003\376\377\377\207\376\377\377\007\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000")) goto l97;  goto l96;
@@ -1167,40 +829,20 @@ YY_RULE(int) yy_identifier(GREG *G)
   yyprintf((stderr, "  ok   %s @ %s\n", "identifier", G->buf+G->pos));
   return 1;
   l95:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 8);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "identifier", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_RPERCENT(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 7)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "RPERCENT", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "RPERCENT"));  if (!yymatchString(G, "%}")) goto l98;  if (!yy__(G)) { goto l98; }
   yyprintf((stderr, "  ok   %s @ %s\n", "RPERCENT", G->buf+G->pos));
   return 1;
   l98:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 7);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "RPERCENT", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_end_of_file(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 6)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "end_of_file", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "end_of_file"));
   {  int yypos100= G->pos, yythunkpos100= G->thunkpos;  if (!yymatchDot(G)) goto l100;  goto l99;
   l100:;	  G->pos= yypos100; G->thunkpos= yythunkpos100;
@@ -1208,21 +850,11 @@ YY_RULE(int) yy_end_of_file(GREG *G)
   yyprintf((stderr, "  ok   %s @ %s\n", "end_of_file", G->buf+G->pos));
   return 1;
   l99:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 6);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "end_of_file", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_trailer(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 5)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "trailer", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "trailer"));  if (!yymatchString(G, "%%")) goto l101;  yyText(G, G->begin, G->end);  if (!(YY_BEGIN)) goto l101;
   l102:;	
   {  int yypos103= G->pos, yythunkpos103= G->thunkpos;  if (!yymatchDot(G)) goto l103;  goto l102;
@@ -1231,21 +863,11 @@ YY_RULE(int) yy_trailer(GREG *G)
   yyprintf((stderr, "  ok   %s @ %s\n", "trailer", G->buf+G->pos));
   return 1;
   l101:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 5);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "trailer", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_definition(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 4)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "definition", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "definition"));  if (!yy_identifier(G)) { goto l104; }  yyDo(G, yy_1_definition, G->begin, G->end);  if (!yy_EQUAL(G)) { goto l104; }  if (!yy_expression(G)) { goto l104; }  yyDo(G, yy_2_definition, G->begin, G->end);
   {  int yypos105= G->pos, yythunkpos105= G->thunkpos;  if (!yy_SEMICOLON(G)) { goto l105; }  goto l106;
   l105:;	  G->pos= yypos105; G->thunkpos= yythunkpos105;
@@ -1254,21 +876,11 @@ YY_RULE(int) yy_definition(GREG *G)
   yyprintf((stderr, "  ok   %s @ %s\n", "definition", G->buf+G->pos));
   return 1;
   l104:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 4);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "definition", G->buf+G->pos));
   return 0;
 }
 YY_RULE(int) yy_declaration(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 3)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "declaration", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "declaration"));  if (!yymatchString(G, "%{")) goto l107;  yyText(G, G->begin, G->end);  if (!(YY_BEGIN)) goto l107;
   l108:;	
   {  int yypos109= G->pos, yythunkpos109= G->thunkpos;
@@ -1280,9 +892,6 @@ YY_RULE(int) yy_declaration(GREG *G)
   yyprintf((stderr, "  ok   %s @ %s\n", "declaration", G->buf+G->pos));
   return 1;
   l107:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 3);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "declaration", G->buf+G->pos));
   return 0;
 }
@@ -1302,13 +911,6 @@ YY_RULE(int) yy__(GREG *G)
 }
 YY_RULE(int) yy_grammar(GREG *G)
 {  int yypos0= G->pos, yythunkpos0= G->thunkpos;
-#ifdef YY_MEMOIZATION
-  if(memo(G, yypos0, 1)) {
-    yyprintf((stderr, "  fail memo %s @ %s\n", "grammar", G->buf+G->pos));
-    return 0;
-  }
-#endif
-
   yyprintf((stderr, "%s\n", "grammar"));  if (!yy__(G)) { goto l116; }
   {  int yypos119= G->pos, yythunkpos119= G->thunkpos;  if (!yy_declaration(G)) { goto l120; }  goto l119;
   l120:;	  G->pos= yypos119; G->thunkpos= yythunkpos119;  if (!yy_definition(G)) { goto l116; }
@@ -1329,9 +931,6 @@ YY_RULE(int) yy_grammar(GREG *G)
   yyprintf((stderr, "  ok   %s @ %s\n", "grammar", G->buf+G->pos));
   return 1;
   l116:;	  G->pos= yypos0; G->thunkpos= yythunkpos0;
-#ifdef YY_MEMOIZATION
-  set_memo(G, yypos0, 1);
-#endif
   yyprintf((stderr, "  fail %s @ %s\n", "grammar", G->buf+G->pos));
   return 0;
 }
@@ -1346,19 +945,14 @@ YY_PARSE(int) YY_NAME(parse_from)(GREG *G, yyrule yystart)
   if (!G->buflen)
     {
       G->buflen= YY_BUFFER_START_SIZE;
-      G->buf= YY_ALLOC(G->buflen, G->data);
+      G->buf= (char*)YY_ALLOC(G->buflen, G->data);
       G->textlen= YY_BUFFER_START_SIZE;
-      G->text= YY_ALLOC(G->textlen, G->data);
+      G->text= (char*)YY_ALLOC(G->textlen, G->data);
       G->thunkslen= YY_STACK_SIZE;
-      G->thunks= YY_ALLOC(sizeof(yythunk) * G->thunkslen, G->data);
+      G->thunks= (yythunk*)YY_ALLOC(sizeof(yythunk) * G->thunkslen, G->data);
       G->valslen= YY_STACK_SIZE;
-      G->vals= YY_ALLOC(sizeof(YYSTYPE) * G->valslen, G->data);
+      G->vals= (YYSTYPE*)YY_ALLOC(sizeof(YYSTYPE) * G->valslen, G->data);
       G->begin= G->end= G->pos= G->limit= G->thunkpos= 0;
-#ifdef YY_MEMOIZATION
-      G->memo = malloc(sizeof(char**) * G->buflen);
-      memset(G->memo, 0, sizeof(char**) * G->buflen);
-      G->memolen = G->buflen;
-#endif
     }
   G->pos = 0;
   G->begin= G->end= G->pos;
@@ -1388,6 +982,17 @@ YY_PARSE(int) YY_NAME(parse)(GREG *G)
   return YY_NAME(parse_from)(G, yy_grammar);
 }
 
+YY_PARSE(void) YY_NAME(init)(GREG *G)
+{
+    memset(G, 0, sizeof(GREG));
+}
+YY_PARSE(void) YY_NAME(deinit)(GREG *G)
+{
+    if (G->buf) YY_FREE(G->buf);
+    if (G->text) YY_FREE(G->text);
+    if (G->thunks) YY_FREE(G->thunks);
+    if (G->vals) YY_FREE(G->vals);
+}
 YY_PARSE(GREG *) YY_NAME(parse_new)(YY_XTYPE data)
 {
   GREG *G = (GREG *)YY_CALLOC(1, sizeof(GREG), G->data);
@@ -1397,6 +1002,7 @@ YY_PARSE(GREG *) YY_NAME(parse_new)(YY_XTYPE data)
 
 YY_PARSE(void) YY_NAME(parse_free)(GREG *G)
 {
+  YY_NAME(deinit)(G);
   YY_FREE(G);
 }
 
